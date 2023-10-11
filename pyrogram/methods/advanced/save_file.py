@@ -225,4 +225,4 @@ class SaveFile:
                 await session.stop()
 
             if isinstance(path, (str, PurePath)):
-                fp.close(
+                fp.close()
