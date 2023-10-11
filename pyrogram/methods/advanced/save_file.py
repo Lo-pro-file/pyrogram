@@ -1,4 +1,3 @@
-#az
 #  Pyrogram - Telegram MTProto API Client Library for Python
 #  Copyright (C) 2017-present Dan <https://github.com/delivrance>
 #
@@ -133,8 +132,8 @@ class SaveFile:
 
         file_total_parts = int(math.ceil(file_size / part_size))
         is_big = file_size > 10 * 1024 * 1024
-        pool_size = 10 if is_big else 8
-        workers_count = 20 if is_big else 15
+        pool_size = 3 if is_big else 1
+        workers_count = 4 if is_big else 1
         is_missing_part = file_id is not None
         file_id = file_id or self.rnd_id()
         md5_sum = md5() if not is_big and not is_missing_part else None
