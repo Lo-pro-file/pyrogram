@@ -221,7 +221,5 @@ class SaveFile:
 
             for session in pool:
                 await session.stop()
-            
-
             if isinstance(path, (str, PurePath)):
                 fp.close()
