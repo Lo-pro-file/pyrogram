@@ -28,7 +28,7 @@ from typing import Union, BinaryIO
 
 from pyrogram import StopTransmission
 from pyrogram import raw
-from pyrogram.scaffold import Scaffold
+#from pyrogram.scaffold import Scaffold
 from pyrogram.session import Session
 
 log = logging.getLogger(__name__)
