@@ -38,6 +38,6 @@ class ContinuePropagation(StopAsyncIteration):
 from . import raw, types, filters, handlers, emoji, enums
 from .client import Client
 from .sync import idle, compose
-from .scaffold import Scaffold
+#from .scaffold import Scaffold
 
 crypto_executor = ThreadPoolExecutor(1, thread_name_prefix="CryptoWorker")
