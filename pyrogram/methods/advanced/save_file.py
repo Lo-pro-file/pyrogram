@@ -1,5 +1,5 @@
 #  Pyrogram - Telegram MTProto API Client Library for Python
-#  Copyright (C) 2017-2020 Dan <https://github.com/delivrance>
+#  Copyright (C) 2017-present Dan <https://github.com/delivrance>
 #
 #  This file is part of Pyrogram.
 #
@@ -18,17 +18,18 @@
 
 import asyncio
 import functools
+import inspect
 import io
 import logging
 import math
 import os
 from hashlib import md5
 from pathlib import PurePath
-from typing import Union, BinaryIO
+from typing import Union, BinaryIO, Callable
 
+import pyrogram
 from pyrogram import StopTransmission
 from pyrogram import raw
-#from pyrogram.scaffold import Scaffold
 from pyrogram.session import Session
 
 log = logging.getLogger(__name__)
@@ -36,11 +37,11 @@ log = logging.getLogger(__name__)
 
 class SaveFile:
     async def save_file(
-        self,
+        self: "pyrogram.Client",
         path: Union[str, BinaryIO],
         file_id: int = None,
         file_part: int = 0,
-        progress: callable = None,
+        progress: Callable = None,
         progress_args: tuple = ()
     ):
         """Upload a file onto Telegram servers, without actually sending the message to anyone.
@@ -53,8 +54,9 @@ class SaveFile:
             available yet in the Client class as an easy-to-use method).
 
         Parameters:
-            path (``str``):
-                The path of the file you want to upload that exists on your local machine.
+            path (``str`` | ``BinaryIO``):
+                The path of the file you want to upload that exists on your local machine or a binary file-like object
+                with its attribute ".name" set for in-memory uploads.
 
             file_id (``int``, *optional*):
                 In case a file part expired, pass the file_id and the file_part to retry uploading that specific chunk.
@@ -62,7 +64,7 @@ class SaveFile:
             file_part (``int``, *optional*):
                 In case a file part expired, pass the file_id and the file_part to retry uploading that specific chunk.
 
-            progress (``callable``, *optional*):
+            progress (``Callable``, *optional*):
                 Pass a callback function to view the file transmission progress.
                 The function must take *(current, total)* as positional arguments (look at Other Parameters below for a
                 detailed description) and will be called back each time a new file chunk has been successfully
@@ -81,8 +83,8 @@ class SaveFile:
                 The total size of the file.
 
             *args (``tuple``, *optional*):
-                Extra custom arguments as defined in the *progress_args* parameter.
-                You can either keep *\*args* or add every single extra argument in your function signature.
+                Extra custom arguments as defined in the ``progress_args`` parameter.
+                You can either keep ``*args`` or add every single extra argument in your function signature.
 
         Returns:
             ``InputFile``: On success, the uploaded file is returned in form of an InputFile object.
@@ -101,7 +103,7 @@ class SaveFile:
                     return
 
                 try:
-                    await self.loop.create_task(session.send(data))
+                    await session.invoke(data)
                 except Exception as e:
                     log.error(e)
 
@@ -114,7 +116,7 @@ class SaveFile:
         else:
             raise ValueError("Invalid file. Expected a file path as string or a binary (not text) file pointer")
 
-        file_name = fp.name
+        file_name = getattr(fp, "name", "file.jpg")
 
         fp.seek(0, os.SEEK_END)
         file_size = fp.tell()
@@ -146,53 +148,52 @@ class SaveFile:
             for session in pool:
                 await session.start()
 
-            with fp:
-                fp.seek(part_size * file_part)
+            fp.seek(part_size * file_part)
 
-                while True:
-                    chunk = fp.read(part_size)
+            while True:
+                chunk = fp.read(part_size)
 
-                    if not chunk:
-                        if not is_big:
-                            md5_sum = "".join([hex(i)[2:].zfill(2) for i in md5_sum.digest()])
-                        break
+                if not chunk:
+                    if not is_big and not is_missing_part:
+                        md5_sum = "".join([hex(i)[2:].zfill(2) for i in md5_sum.digest()])
+                    break
 
-                    if is_big:
-                        rpc = raw.functions.upload.SaveBigFilePart(
-                            file_id=file_id,
-                            file_part=file_part,
-                            file_total_parts=file_total_parts,
-                            bytes=chunk
-                        )
+                if is_big:
+                    rpc = raw.functions.upload.SaveBigFilePart(
+                        file_id=file_id,
+                        file_part=file_part,
+                        file_total_parts=file_total_parts,
+                        bytes=chunk
+                    )
+                else:
+                    rpc = raw.functions.upload.SaveFilePart(
+                        file_id=file_id,
+                        file_part=file_part,
+                        bytes=chunk
+                    )
+
+                await queue.put(rpc)
+
+                if is_missing_part:
+                    return
+
+                if not is_big and not is_missing_part:
+                    md5_sum.update(chunk)
+
+                file_part += 1
+
+                if progress:
+                    func = functools.partial(
+                        progress,
+                        min(file_part * part_size, file_size),
+                        file_size,
+                        *progress_args
+                    )
+
+                    if inspect.iscoroutinefunction(progress):
+                        await func()
                     else:
-                        rpc = raw.functions.upload.SaveFilePart(
-                            file_id=file_id,
-                            file_part=file_part,
-                            bytes=chunk
-                        )
-
-                    await queue.put(rpc)
-
-                    if is_missing_part:
-                        return
-
-                    if not is_big:
-                        md5_sum.update(chunk)
-
-                    file_part += 1
-
-                    if progress:
-                        if asyncio.iscoroutinefunction(progress):
-                            await progress(min(file_part * part_size, file_size), file_size, *progress_args)
-                        else:
-                            func = functools.partial(
-                                progress,
-                                min(file_part * part_size, file_size),
-                                file_size,
-                                *progress_args
-                            )
-
-                            await self.loop.run_in_executor(self.executor, func)
+                        await self.loop.run_in_executor(self.executor, func)
         except StopTransmission:
             raise
         except Exception as e:
@@ -220,3 +221,5 @@ class SaveFile:
 
             for session in pool:
                 await session.stop()
+            if isinstance(path, (str, PurePath)):
+                fp.close()
