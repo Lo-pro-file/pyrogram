@@ -34,7 +34,7 @@ from pyrogram.session import Session
 log = logging.getLogger(__name__)
 
 
-class SaveFile(Scaffold):
+class SaveFile:
     async def save_file(
         self,
         path: Union[str, BinaryIO],
