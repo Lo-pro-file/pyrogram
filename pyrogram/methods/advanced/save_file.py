@@ -219,4 +219,4 @@ class SaveFile(Scaffold):
             await asyncio.gather(*workers)
 
             for session in pool:
-                await session.stop(
+                await session.stop()
